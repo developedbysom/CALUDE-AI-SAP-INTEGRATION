@@ -1,6 +1,6 @@
 Integrate Claude AI with SAP
 ---
 
-Youtube Demo - [Link](https://youtu.be/-dzNtOZ8dLs)
+Youtube Demo - [Link]([https://youtu.be/-dzNtOZ8dLs](https://youtu.be/04wwKJrK08A))
 
-<img width="1920" height="1080" alt="Integrate Claude AI & SAP" src="https://github.com/user-attachments/assets/6e45534e-5356-4d46-9f19-2ada63160d0c" />
+<img width="1279" height="722" alt="image" src="https://github.com/user-attachments/assets/c6e99413-75fc-421c-b63d-71be3e91f0c4" />
