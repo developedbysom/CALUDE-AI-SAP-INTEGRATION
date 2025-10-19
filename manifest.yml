@@ -1,0 +1,13 @@
+applications:
+  - name: btp-mcp-server
+    memory: 256M
+    disk_quota: 256M
+    instances: 1
+    random-route: true
+    buildpacks:
+      - nodejs_buildpack
+    services:
+      - my-destination-service
+    env:
+      NODE_ENV: production
+      # PORT is automatically set by BTP
