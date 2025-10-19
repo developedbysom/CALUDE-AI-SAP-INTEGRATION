@@ -1,167 +1,252 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from 'zod';
 
-export class SAPMCPServer {
-  constructor(sapService) {
-    this.sapService = sapService;
-    this.server = new McpServer({
-      name: 'sap-mcp-server',
-      version: '1.0.0'
-    });
-    
-    this.setupErrorHandling();
-    this.registerTools();
-  }
+import express from 'express';
+import xsenv from '@sap/xsenv';
+import axios from 'axios';
+// import { randomUUID } from 'node:crypto';
 
-  setupErrorHandling() {
-    this.server.server.onerror = (error) => {
-      console.error('MCP Server Error:', error);
-    };
-  }
+const app = express();
+const port = process.env.PORT || 3000;
 
-  registerTools() {
-    this.registerHealthTool();
-    this.registerProductTools();
-    // this.registerSalesOrderTools();
-  }
+// Middleware - CRITICAL
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-  registerHealthTool() {
-    this.server.tool(
-      'sap_health_check',
-      {},
-      async () => {
+class BTPDestinationService {
+    constructor() {
+        this.destinationService = null;
+        this.initializeServices();
+    }
+
+    initializeServices() {
         try {
-          const health = await this.sapService.healthCheck();
-          return {
-            content: [{
-              type: 'text',
-              text: `SAP Health Check:\nStatus: ${health.status}\nMessage: ${health.message}`
-            }]
-          };
+            xsenv.loadEnv();
+            this.destinationService = xsenv.getServices({
+                destination: { tag: 'destination' }
+            }).destination;
+            console.error('✅ BTP Destination Service loaded');
         } catch (error) {
-          return {
-            content: [{
-              type: 'text',
-              text: `Health check failed: ${error.message}`
-            }]
-          };
+            console.error('❌ Service binding failed:', error.message);
         }
-      }
-    );
-  }
+    }
 
+    async getAccessToken() {
+        if (!this.destinationService) {
+            throw new Error('Destination service not available');
+        }
 
-  registerProductTools() {
-    this.server.tool(
-      'get_products',
-      {
-        limit: z.number().min(1).max(100).default(10)
-          .describe('Number of records to fetch'),
-        skip: z.number().min(0).default(0)
-          .describe('Number of records to skip (for pagination)'),
-        search: z.string().optional()
-          .describe('Search in product description')
-      },
-      async ({ limit, skip, search }) => {
+        const response = await axios.post(
+            `${this.destinationService.url}/oauth/token`,
+            new URLSearchParams({
+                grant_type: 'client_credentials',
+                client_id: this.destinationService.clientid,
+                client_secret: this.destinationService.clientsecret,
+            }),
+            {
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            }
+        );
+        return response.data.access_token;
+    }
+
+    async callDestination(destinationName, entity = '') {
+        const token = await this.getAccessToken();
+
+        console.error(`🔗 Calling destination: ${destinationName} with entity: ${entity}`);
+
+        let destResponse
         try {
-          const data = await this.sapService.getProducts(limit, skip, search);
-          const products = data.d?.results || data.value || [];
-          
-        
-          if (products.length === 0) {
-            return {
-              content: [{
-                type: 'text',
-                text: 'No products found matching your criteria.'
-              }]
-            };
-          }
-          
-          const productList = products.map(product => 
-            `• ${product.ProductID} - ${product.Description || 'No description'} (${product.Category || 'N/A'})`
-          ).join('\n');
-          
-          return {
-            content: [{
-              type: 'text',
-              text: `Products ${skip + 1} to ${skip + products.length}:\n\n${productList}\n\nTotal: ${products.length} products`
-            }]
-          };
+            destResponse = await axios.get(
+                `${this.destinationService.uri}/destination-configuration/v1/destinations/${destinationName}`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
         } catch (error) {
-          return {
-            content: [{
-              type: 'text',
-              text: `Error fetching products: ${error.message}`
-            }]
-          };
+            console.error('❌ Error fetching destination:', error);
         }
-      }
-    );
-  }
 
-//   registerSalesOrderTools() {
-//     this.server.tool(
-//       'get_sales_orders',
-//       {
-//         limit: z.number().min(1).max(100).default(10)
-//           .describe('Number of records to fetch'),
-//         skip: z.number().min(0).default(0)
-//           .describe('Number of records to skip (for pagination)'),
-//         customerId: z.string().optional()
-//           .describe('Filter by customer ID')
-//       },
-//       async ({ limit, skip, customerId }) => {
-//         try {
-//           const data = await this.sapService.getSalesOrders(limit, skip, customerId);
-//           const orders = data.d?.results || data.value || [];
-          
-//           if (orders.length === 0) {
-//             return {
-//               content: [{
-//                 type: 'text',
-//                 text: 'No sales orders found matching your criteria.'
-//               }]
-//             };
-//           }
-          
-//           const orderList = orders.map(order => 
-//             `• ${order.SalesOrder} - Customer: ${order.SoldToParty} - Total: ${order.TotalNetAmount || 'N/A'} ${order.TransactionCurrency || ''}`
-//           ).join('\n');
-          
-//           return {
-//             content: [{
-//               type: 'text',
-//               text: `Sales Orders ${skip + 1} to ${skip + orders.length}:\n\n${orderList}\n\nTotal: ${orders.length} orders`
-//             }]
-//           };
-//         } catch (error) {
-//           return {
-//             content: [{
-//               type: 'text',
-//               text: `Error fetching sales orders: ${error.message}`
-//             }]
-//           };
-//         }
-//       }
-//     );
-//   }
+        // console.error('Destination response:', destResponse.data);
+        const baseUrl = destResponse.data.destinationConfiguration.URL;
+        const url = entity ? `${baseUrl}/${entity}` : baseUrl;
 
-  async start() {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error('✅ SAP MCP Server running on stdio...');
-    
-    // List available tools for debugging
-    const toolNames = [
-      'sap_health_check',
-      'get_products',
-    //   'get_sales_orders'
-    ];
-    console.error(`📋 Available tools: ${toolNames.join(', ')}`);
-  }
+        console.error(`➡️ Calling destination URL: ${url}`);
 
-  getServer() {
-    return this.server;
-  }
+        // Call the destination
+        const serviceResponse = await axios.get(url, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        console.error('Service response received', serviceResponse.data);
+        return serviceResponse.data;
+    }
 }
+
+// Initialize MCP Server
+const server = new McpServer({
+    name: "btp-destination-mcp",
+    version: "1.0.0"
+});
+
+// Initialize BTP Services
+let btpService;
+try {
+    btpService = new BTPDestinationService();
+} catch (error) {
+    console.error('❌ Failed to initialize BTP services:', error.message);
+}
+
+// Register MCP Tools
+server.tool(
+    'list_destinations',
+    'List all available BTP destinations',
+    {},
+    async () => {
+        try {
+            if (!btpService) {
+                return {
+                    content: [{
+                        type: 'text',
+                        text: '❌ BTP Destination Service not available. Check service binding.'
+                    }]
+                };
+            }
+            console.error('🔍 Listing destinations...');
+
+            const token = await btpService.getAccessToken();
+            console.error('🔑 Access token acquired');
+            console.error(`🔗${btpService.destinationService.uri}`);
+            const response = await axios.get(
+                `${btpService.destinationService.uri}/destination-configuration/v1/subaccountDestinations`,
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+
+            const destinations = response.data.map(dest => ({
+                name: dest.Name,
+                type: dest.Type,
+                url: dest.URL
+            }));
+
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Available Destinations:\n${JSON.stringify(destinations, null, 2)}`
+                }]
+            };
+
+        } catch (error) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: `❌ Error listing destinations: ${error.message}`
+                }]
+            };
+        }
+    }
+);
+
+server.tool(
+    'query_northwind',
+    'Query Northwind service via BTP destination',
+    {
+        entity: z.enum(['Products', 'Customers', 'Orders', 'Categories', 'Suppliers']),
+        top: z.number().min(1).max(100).default(5),
+        skip: z.string().optional()
+    },
+    async ({ entity, top, skip }) => {
+        // console.error(`🔍 Querying Northwind entity: ${entity} with top: ${top}`);
+        try {
+            if (!btpService) {
+                throw new Error('BTP services not available');
+            }
+
+            const result = await btpService.callDestination('northwind', `${entity}?$top=${top}&$skip=${skip || 0}`);
+
+            return {
+                content: [{
+                    type: 'text',
+                    text: `Northwind ${entity} (first ${top}):\n${JSON.stringify(result, null, 2)}`
+                }]
+            };
+
+        } catch (error) {
+            return {
+                content: [{
+                    type: 'text',
+                    text: `❌ Error querying Northwind: ${error.message}`
+                }]
+            };
+        }
+    }
+);
+
+// Health endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        service: 'BTP MCP HTTP Server',
+        btp_connected: !!btpService,
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+    res.json({
+        service: 'BTP MCP HTTP Server',
+        status: 'running',
+        endpoints: {
+            health: '/health (GET)',
+            mcp: '/mcp (POST)'
+        },
+        message: 'POST MCP JSON-RPC requests to /mcp endpoint'
+    });
+});
+
+
+// Initialize MCP HTTP Transport - CORRECT WAY
+console.error('🔄 Initializing StreamableHTTPServerTransport...');
+let transport
+try {
+    transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined
+    });
+
+    // Connect server to transport
+    server.connect(transport).then(() => {
+        console.error('✅ StreamableHTTPServerTransport connected at /mcp');
+
+    }).catch(error => {
+        console.error('❌ Failed to connect transport:', error);
+    });
+} catch (error) {
+    console.error('❌ StreamableHTTPServerTransport initialization failed:', error);
+
+}
+
+app.post('/mcp', async (req, res) => {
+    console.log('Received MCP request:', req.body);
+    try {
+        await transport.handleRequest(req, res, req.body);
+    } catch (error) {
+        console.error('Error handling MCP request:', error);
+        if (!res.headersSent) {
+            res.status(500).json({
+                jsonrpc: '2.0',
+                error: {
+                    code: -32603,
+                    message: error.message || 'Internal error',
+                },
+                id: null,
+            });
+        }
+    }
+});
+
+// Start the server
+app.listen(port, () => {
+    console.error(`🚀 BTP MCP HTTP Server running on port ${port}`);
+    console.error(`📍 Health: /health`);
+    console.error(`📍 MCP: /mcp (POST)`);
+    console.error(`📍 Debug: /mcp-debug (GET)`);
+});
