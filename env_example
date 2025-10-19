@@ -1,5 +1,0 @@
-SAP_BASE_URL=https://host:port   
-SAP_USERNAME=<username>
-SAP_PASSWORD=<password>
-SAP_CLIENT=001
-SAP_PRODUCT_SERVICE=/sap/opu/odata/IWBEP/GWSAMPLE_BASIC
