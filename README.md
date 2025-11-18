@@ -1,4 +1,4 @@
-Integrate Claude AI with SAP
+Build you custom MCP Client Powered by LLM
 ---
 
 Youtube Demo - [Link](https://youtu.be/uOrcx-CTOOg)
