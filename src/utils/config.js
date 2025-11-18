@@ -7,9 +7,13 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Suppress console output during dotenv load
+const originalLog = console.log;
+console.log = () => { };
+
 // Load from absolute path
 const envPath = path.resolve(__dirname, '../../.env');
-dotenv.config({ path: envPath });
+dotenv.config({ path: envPath, silent: true });
 
 export class Config {
     static validate() {
@@ -28,6 +32,7 @@ export class Config {
             password: process.env.SAP_PASSWORD,
             client: process.env.SAP_CLIENT || '100',
             productService: process.env.SAP_PRODUCT_SERVICE || '/sap/opu/odata/sap/API_PRODUCT_SRV',
+            salesService: process.env.SAP_PRODUCT_SERVICE
         };
     }
 }
